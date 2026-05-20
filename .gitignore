@@ -1,0 +1,7 @@
+build
+.vscode/*
+wifi_credentials.cmake
+.DS_Store
+.cache
+.idea
+
