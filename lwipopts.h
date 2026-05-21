@@ -89,4 +89,11 @@
 #define SLIP_DEBUG                  LWIP_DBG_OFF
 #define DHCP_DEBUG                  LWIP_DBG_OFF
 
+#define LWIP_ALTCP               1
+#define LWIP_ALTCP_TLS           0   // set to 1 if you need TLS
+#define MQTT_OUTPUT_RINGBUF_SIZE 512
+#define MQTT_VAR_HEADER_BUFFER_LEN 256
+
+#define MEMP_NUM_SYS_TIMEOUT        16
+
 #endif /* __LWIPOPTS_H__ */
