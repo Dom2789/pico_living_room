@@ -61,12 +61,12 @@ void pattern_random(PIO pio, uint sm, uint len, uint t) {
     printf("pattern call\n");
      }
 
-void setting_leds()
+void set_leds()
 {
     float brightness = .25f;
     short blue = 50;
     short green = 180;
-
+    short red = 255;
     struct RGB { short r, g, b; };
     RGB leds[30];
 
@@ -78,23 +78,24 @@ void setting_leds()
         leds[i] = {255,green,blue};
         blue -= 2;
         green -= 1;
-
+        if (blue < 0) blue = 0;
     }
 
     for (int i = 0; i < WS2812_LEN; ++i)
     {
         printf("%i: (%i, %i, %i)\n", i+1, leds[i].r, leds[i].g, leds[i].b);
     }
-
-    /*
-    ws2812_put_pixel(ws2812_rgb(1, 1, 1));
-    for (int i = 21; i < WS2812_LEN; ++i)
-    {
-        ws2812_put_pixel(ws2812_rgb(0, 0, 10));
-    }
-    */
-
 }
+
+void set_leds_to_one_color()
+{
+    float brightness = .25f;
+    for (int i = 0; i < WS2812_LEN; ++i)
+    {
+        ws2812_put_pixel(ws2812_rgb_scaled(255, 160, 10, brightness));
+    }
+}
+
 
 int main()
 {
@@ -162,7 +163,8 @@ int main()
     // Wait a moment for connection (in a real app, do this in the callback)
     sleep_ms(2000);
 
-    setting_leds();
+    //set_leds();
+    set_leds_to_one_color();
 
     while (true) {
         const char *payload = "hello from pico";
