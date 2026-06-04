@@ -1,16 +1,41 @@
+#include <array>
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
+#include "hardware/pio.h"
 #include "pico/cyw43_arch.h"
 #include "lwip/apps/mqtt.h"
 #include "lwip/ip_addr.h"
+#include "ws2812.pio.h"
 
 // I2C defines
-// This example will use I2C0 on GPIO8 (SDA) and GPIO9 (SCL) running at 400KHz.
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
 #define I2C_PORT i2c0
 #define I2C_SDA 8
 #define I2C_SCL 9
+
+// WS2812 defines
+#define WS2812_PIN 0
+#define WS2812_IS_RGBW false
+#define WS2812_LEN 30
+
+static PIO ws2812_pio = pio0;
+static uint ws2812_sm = 0;
+
+static inline void ws2812_put_pixel(uint32_t grb) {
+    pio_sm_put_blocking(ws2812_pio, ws2812_sm, grb << 8u);
+}
+
+// Pack RGB into GRB word
+static inline uint32_t ws2812_rgb(uint8_t r, uint8_t g, uint8_t b) {
+    return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
+}
+
+static inline uint32_t ws2812_rgb_scaled(uint8_t r, uint8_t g, uint8_t b, float brightness = 1.0f) {
+    r = (uint8_t)(r * brightness);
+    g = (uint8_t)(g * brightness);
+    b = (uint8_t)(b * brightness);
+    return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
+}
 
 static mqtt_client_t *mqtt_client;
 
@@ -28,9 +53,62 @@ static void mqtt_pub_request_cb(void *arg, err_t result) {
     }
 }
 
+void pattern_random(PIO pio, uint sm, uint len, uint t) {
+    if (t % 8)
+        return;
+     for (uint i = 0; i < len; ++i)
+        ws2812_put_pixel(static_cast<uint32_t>(rand()*0.1));
+    printf("pattern call\n");
+     }
+
+void setting_leds()
+{
+    float brightness = .25f;
+    short blue = 50;
+    short green = 180;
+
+    struct RGB { short r, g, b; };
+    RGB leds[30];
+
+    for (int i = 0; i < WS2812_LEN; ++i)
+    {
+        //printf("%.2f\n", brightness);
+        //printf("%i: %i\n", i+1, blue);
+        ws2812_put_pixel(ws2812_rgb_scaled(255, green, blue, brightness));
+        leds[i] = {255,green,blue};
+        blue -= 2;
+        green -= 1;
+
+    }
+
+    for (int i = 0; i < WS2812_LEN; ++i)
+    {
+        printf("%i: (%i, %i, %i)\n", i+1, leds[i].r, leds[i].g, leds[i].b);
+    }
+
+    /*
+    ws2812_put_pixel(ws2812_rgb(1, 1, 1));
+    for (int i = 21; i < WS2812_LEN; ++i)
+    {
+        ws2812_put_pixel(ws2812_rgb(0, 0, 10));
+    }
+    */
+
+}
+
 int main()
 {
     stdio_init_all();
+
+    // Initialise WS2812
+    uint offset = pio_add_program(ws2812_pio, &ws2812_program);
+    ws2812_program_init(ws2812_pio, ws2812_sm, offset, WS2812_PIN, 800000, WS2812_IS_RGBW);
+    /*
+    ws2812_put_pixel(ws2812_rgb_scaled(255, 0, 0, 1.0));
+    ws2812_put_pixel(ws2812_rgb(255, 255, 0));
+    //for (int i = 0; i < 27; ++i) ws2812_put_pixel(ws2812_rgb(0, 0, 0));
+    ws2812_put_pixel(ws2812_rgb(0, 0, 255));
+    */
 
     // Initialise the Wi-Fi chip
     if (cyw43_arch_init()) {
@@ -84,14 +162,20 @@ int main()
     // Wait a moment for connection (in a real app, do this in the callback)
     sleep_ms(2000);
 
+    setting_leds();
+
     while (true) {
         const char *payload = "hello from pico";
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
         mqtt_publish(mqtt_client, "pico/test", payload, strlen(payload),
                      0,    // QoS 0
                      0,    // not retained
                      mqtt_pub_request_cb, NULL);
 
         printf("%s\n",payload);
-        sleep_ms(10000);
+        sleep_ms(50);
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+        //pattern_random(ws2812_pio, ws2812_sm, WS2812_LEN, 8);
+        sleep_ms(9950);
     }
 }

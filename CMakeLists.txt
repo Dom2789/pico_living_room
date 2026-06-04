@@ -38,6 +38,8 @@ pico_sdk_init()
 
 add_executable(MqttBme280 main.cpp )
 
+pico_generate_pio_header(MqttBme280 ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
+
 pico_set_program_name(MqttBme280 "MqttBme280")
 pico_set_program_version(MqttBme280 "0.1")
 
@@ -62,6 +64,7 @@ target_compile_definitions(MqttBme280 PRIVATE
 # Add any user requested libraries
 target_link_libraries(MqttBme280 
         hardware_i2c
+        hardware_pio
         pico_cyw43_arch_lwip_threadsafe_background
         pico_lwip_mqtt
         )
