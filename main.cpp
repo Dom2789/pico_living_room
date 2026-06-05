@@ -7,6 +7,8 @@
 #include "lwip/apps/mqtt.h"
 #include "lwip/ip_addr.h"
 #include "ws2812.pio.h"
+#include "exlibs/cJSON.h"
+#include "LED.h"
 
 // I2C defines
 #define I2C_PORT i2c0
@@ -25,10 +27,14 @@ static inline void ws2812_put_pixel(uint32_t grb) {
     pio_sm_put_blocking(ws2812_pio, ws2812_sm, grb << 8u);
 }
 
+
+
 // Pack RGB into GRB word
 static inline uint32_t ws2812_rgb(uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
 }
+
+
 
 static inline uint32_t ws2812_rgb_scaled(uint8_t r, uint8_t g, uint8_t b, float brightness = 1.0f) {
     r = (uint8_t)(r * brightness);
@@ -37,29 +43,13 @@ static inline uint32_t ws2812_rgb_scaled(uint8_t r, uint8_t g, uint8_t b, float 
     return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
 }
 
-static mqtt_client_t *mqtt_client;
-
-static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
-    if (status == MQTT_CONNECT_ACCEPTED) {
-        printf("MQTT connected\n");
-    } else {
-        printf("MQTT connection failed: %d\n", status);
-    }
-}
-
-static void mqtt_pub_request_cb(void *arg, err_t result) {
-    if (result == ERR_OK) {
-        printf("Publish successful\n");
-    }
-}
-
 void pattern_random(PIO pio, uint sm, uint len, uint t) {
     if (t % 8)
         return;
-     for (uint i = 0; i < len; ++i)
+    for (uint i = 0; i < len; ++i)
         ws2812_put_pixel(static_cast<uint32_t>(rand()*0.1));
     printf("pattern call\n");
-     }
+}
 
 void set_leds()
 {
@@ -96,6 +86,57 @@ void set_leds_to_one_color()
     }
 }
 
+
+static mqtt_client_t *mqtt_client;
+
+static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
+    if (status == MQTT_CONNECT_ACCEPTED) {
+        printf("MQTT connected\n");
+    } else {
+        printf("MQTT connection failed: %d\n", status);
+    }
+}
+
+static void mqtt_pub_request_cb(void *arg, err_t result) {
+    if (result == ERR_OK) {
+        printf("Publish successful\n");
+    }
+}
+
+static volatile bool leds_dirty = false;
+static u8_t* rcv_data;
+static u16_t rcv_len;
+static LED rcv_led;
+//static uint8_t led_r = 0, led_g = 0, led_b = 0;
+
+// MQTT incoming data callback
+static void mqtt_incoming_data_cb_print(void *arg, const u8_t *data, u16_t len, u8_t flags) {
+    // e.g. payload "255,0,128"
+    //sscanf((const char *)data, "%hhu,%hhu,%hhu", &led_r, &led_g, &led_b);
+    printf("%.*s\n", len, reinterpret_cast<const char*>(data));
+    rcv_data = const_cast<u8_t*>(data);
+    rcv_len = len;
+    leds_dirty = true;
+}
+
+static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
+    char buf[256];
+    memcpy(buf, data, len);
+    buf[len] = '\0';
+
+    cJSON *json = cJSON_Parse(buf);
+    if (json) {
+        rcv_led.setRed(cJSON_GetObjectItem(json, "red")->valueint);
+        rcv_led.setGreen(cJSON_GetObjectItem(json, "green")->valueint);
+        rcv_led.setBlue(cJSON_GetObjectItem(json, "blue")->valueint);
+        rcv_led.setBrightness(cJSON_GetObjectItem(json, "brightness")->valueint / 255.0f);
+        // parse "mode" similarly
+        cJSON_Delete(json);
+        rcv_data = const_cast<u8_t*>(data);
+        rcv_len = len;
+        leds_dirty = true;
+    }
+}
 
 int main()
 {
@@ -162,6 +203,9 @@ int main()
     mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
     // Wait a moment for connection (in a real app, do this in the callback)
     sleep_ms(2000);
+    // Subscribe
+    mqtt_subscribe(mqtt_client, "pico/leds", 0, NULL, NULL);
+    mqtt_set_inpub_callback(mqtt_client, NULL, mqtt_incoming_data_cb, NULL);
 
     //set_leds();
     set_leds_to_one_color();
@@ -173,8 +217,18 @@ int main()
                      0,    // QoS 0
                      0,    // not retained
                      mqtt_pub_request_cb, NULL);
-
         printf("%s\n",payload);
+
+        if (leds_dirty)
+        {
+            mqtt_publish(mqtt_client, "pico/mirror",rcv_led.toString() , 128,
+                          0,    // QoS 0
+                          0,    // not retained
+                          mqtt_pub_request_cb, NULL);
+
+            leds_dirty = false;
+        }
+
         sleep_ms(50);
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         //pattern_random(ws2812_pio, ws2812_sm, WS2812_LEN, 8);
