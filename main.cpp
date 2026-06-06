@@ -20,6 +20,7 @@
 #define I2C_SCL 21
 
 // sntp
+constexpr int TIMEZONE_OFFSET_SEC = 2 * 3600;  // UTC+2 for Germany
 void sntp_set_system_time(unsigned int sec) {
     timeval tv = { .tv_sec = sec, .tv_usec = 0 };
     settimeofday(&tv, NULL);
@@ -115,7 +116,7 @@ void set_leds()
 
 void set_leds_to_one_color()
 {
-    float brightness = .25f;
+    float brightness = .1f;
     for (int i = 0; i < WS2812_LEN; ++i)
     {
         ws2812_put_pixel(ws2812_rgb_scaled(255, 160, 10, brightness));
@@ -299,7 +300,7 @@ int main()
     uint32_t last_read_bme = 0;
     constexpr  uint32_t interval_publish = 10'000; // time between publishes in milliseconds
     constexpr  uint32_t interval_read_bme = 2'000;
-    static char payload_bme280[60];
+    static char payload_bme280[42];
     while (true)
     {
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -307,15 +308,19 @@ int main()
         if (now - last_publish > interval_publish)
         {
             last_publish = now;
+
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+
+            time_t clock = time(NULL)+ TIMEZONE_OFFSET_SEC;
+            tm *t = localtime(&clock);
 
             bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
             dev.delay_us(meas_delay_us, dev.intf_ptr);
             bme280_data data;
             rslt = bme280_get_sensor_data(BME280_ALL, &data, &dev);
             if (rslt == BME280_OK) {
-                snprintf(payload_bme280, sizeof(payload_bme280),"Temp: %.2f °C  Humidity: %.2f %%  Pressure: %.2f hPa",
-                       data.temperature, data.humidity, data.pressure / 100.0);
+                snprintf(payload_bme280, sizeof(payload_bme280),"[%02d:%02d:%02d] [%.2fC] [%.2fhPa] [%.2f%%]",
+                       t->tm_hour, t->tm_min, t->tm_sec, data.temperature, data.pressure / 100.0, data.humidity);
 
                 mqtt_publish(mqtt_client, "pico/BME280", payload_bme280, strlen(payload_bme280),
                              0,    // QoS 0
@@ -344,7 +349,7 @@ int main()
             } else {
                 printf("Read error: %d\n", rslt);
             }
-            time_t clock = time(NULL);
+            time_t clock = time(NULL) + TIMEZONE_OFFSET_SEC;
             tm *t = localtime(&clock);
             printf("%02d:%02d:%02d\n", t->tm_hour, t->tm_min, t->tm_sec);
         }
