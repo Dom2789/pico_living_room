@@ -49,6 +49,7 @@
 #define LWIP_TCP                    1
 #define LWIP_UDP                    1
 #define LWIP_DNS                    1
+#define SNTP_SERVER_DNS             1
 #define LWIP_TCP_KEEPALIVE          1
 #define LWIP_NETIF_TX_SINGLE_PBUF   1
 #define DHCP_DOES_ARP_CHECK         0
@@ -95,5 +96,10 @@
 #define MQTT_VAR_HEADER_BUFFER_LEN 256
 
 #define MEMP_NUM_SYS_TIMEOUT        16
+
+void sntp_set_system_time(unsigned int sec);
+#define SNTP_SET_SYSTEM_TIME(sec) sntp_set_system_time(sec)
+#define SNTP_UPDATE_DELAY           15000   // resync every 15 seconds
+#define SNTP_STARTUP_DELAY          0       // sync immediately on start
 
 #endif /* __LWIPOPTS_H__ */

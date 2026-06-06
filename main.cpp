@@ -11,11 +11,19 @@
 #include "LED.h"
 #include "pico/time.h"
 #include "exlibs/bme280.h"
+#include "lwip/apps/sntp.h"
+#include <sys/time.h>
 
 // I2C defines
 #define I2C_PORT i2c0
 #define I2C_SDA 20
 #define I2C_SCL 21
+
+// sntp
+void sntp_set_system_time(unsigned int sec) {
+    timeval tv = { .tv_sec = sec, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+}
 
 // BME280
 static BME280_INTF_RET_TYPE bme280_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
@@ -223,6 +231,12 @@ int main()
     }
     if (retrys >= 4 ) return 1;
 
+    // Call once after Wi-Fi connects
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_init();
+    sleep_ms(2000);  // wait for sync
+
     // BME 280 init
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
@@ -285,6 +299,7 @@ int main()
     uint32_t last_read_bme = 0;
     constexpr  uint32_t interval_publish = 10'000; // time between publishes in milliseconds
     constexpr  uint32_t interval_read_bme = 2'000;
+    static char payload_bme280[60];
     while (true)
     {
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -293,11 +308,24 @@ int main()
         {
             last_publish = now;
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-            mqtt_publish(mqtt_client, "pico/test", payload, strlen(payload),
-                         0,    // QoS 0
-                         0,    // not retained
-                         mqtt_pub_request_cb, NULL);
-            printf("%s\n",payload);
+
+            bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
+            dev.delay_us(meas_delay_us, dev.intf_ptr);
+            bme280_data data;
+            rslt = bme280_get_sensor_data(BME280_ALL, &data, &dev);
+            if (rslt == BME280_OK) {
+                snprintf(payload_bme280, sizeof(payload_bme280),"Temp: %.2f °C  Humidity: %.2f %%  Pressure: %.2f hPa",
+                       data.temperature, data.humidity, data.pressure / 100.0);
+
+                mqtt_publish(mqtt_client, "pico/BME280", payload_bme280, strlen(payload_bme280),
+                             0,    // QoS 0
+                             0,    // not retained
+                             mqtt_pub_request_cb, NULL);
+                printf("%s\n",payload_bme280);
+            } else {
+                printf("Read error: %d\n", rslt);
+            }
+
             sleep_ms(50);
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         }
@@ -308,7 +336,7 @@ int main()
             bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
             dev.delay_us(meas_delay_us, dev.intf_ptr);
 
-            struct bme280_data data;
+            bme280_data data;
             rslt = bme280_get_sensor_data(BME280_ALL, &data, &dev);
             if (rslt == BME280_OK) {
                 printf("Temp: %.2f °C  Humidity: %.2f %%  Pressure: %.2f hPa\n",
@@ -316,6 +344,9 @@ int main()
             } else {
                 printf("Read error: %d\n", rslt);
             }
+            time_t clock = time(NULL);
+            tm *t = localtime(&clock);
+            printf("%02d:%02d:%02d\n", t->tm_hour, t->tm_min, t->tm_sec);
         }
 
         if (leds_dirty)
