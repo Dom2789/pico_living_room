@@ -6,3 +6,4 @@ wifi_credentials.cmake
 .idea
 ws2812.pio
 exlibs
+BME280_SensorAPI

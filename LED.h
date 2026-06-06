@@ -41,6 +41,18 @@ public:
                  _brightness, _red, _green, _blue);
         return buf;
     }
+
+    uint32_t ws2812_rgb_scaled() {
+        const uint8_t  r = (uint8_t)(_red * _brightness);
+        const uint8_t  g = (uint8_t)(_green * _brightness);
+        const uint8_t  b = (uint8_t)(_blue * _brightness);
+        return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
+    }
+
+    uint32_t ws2812_rgb() {
+        return ((uint32_t)_green << 16) | ((uint32_t)_red << 8) | _blue;
+    }
+
 private:
     uint8_t _red, _green, _blue;
     float _brightness;

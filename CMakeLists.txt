@@ -36,8 +36,10 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(MqttBme280 main.cpp exlibs/cJSON.c
-        LED.h)
+add_executable(MqttBme280 main.cpp
+                exlibs/cJSON.c
+                LED.h
+                exlibs/bme280.c)
 
 pico_generate_pio_header(MqttBme280 ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
