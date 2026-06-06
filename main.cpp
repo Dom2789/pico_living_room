@@ -1,4 +1,3 @@
-#include <array>
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
