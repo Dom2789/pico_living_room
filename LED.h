@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 
+#include "pico/binary_info/code.h"
+
 class LED {
 public:
     LED(int red = 0, int green = 0, int blue = 0, float brightness = 1.0f)
@@ -36,7 +38,7 @@ public:
         else _brightness = br;
     }
     const char* toString() const {
-        static char buf[128];
+        static char buf[52];
         snprintf(buf, sizeof(buf), "{brightness: %.2f, red: %i, green: %i, blue: %i}",
                  _brightness, _red, _green, _blue);
         return buf;
@@ -51,6 +53,16 @@ public:
 
     uint32_t ws2812_rgb() {
         return ((uint32_t)_green << 16) | ((uint32_t)_red << 8) | _blue;
+    }
+
+    void set_leds_form_MQTT(const uint led_strip_len, void(* put_pixel)(uint32_t))
+    {
+        for (int i = 0; i < led_strip_len; ++i)
+        {
+            put_pixel(this->ws2812_rgb_scaled());
+        }
+        sleep_us(100);  // latch
+        printf("%s\n", this->toString());
     }
 
 private:

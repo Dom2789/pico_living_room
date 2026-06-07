@@ -58,78 +58,13 @@ constexpr bool WS2812_IS_RGBW = false;
 constexpr uint WS2812_PIN = 0;
 constexpr uint WS2812_LEN = 30;
 
-static LED led;
+static LED led(255, 160, 10, 0.2);
 
 static PIO ws2812_pio = pio0;
 static uint ws2812_sm = 0;
 
-static inline void ws2812_put_pixel(uint32_t grb) {
+static void ws2812_put_pixel(uint32_t grb) {
     pio_sm_put_blocking(ws2812_pio, ws2812_sm, grb << 8u);
-}
-
-// Pack RGB into GRB word
-static inline uint32_t ws2812_rgb(uint8_t r, uint8_t g, uint8_t b) {
-    return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
-}
-
-static inline uint32_t ws2812_rgb_scaled(uint8_t r, uint8_t g, uint8_t b, float brightness = 1.0f) {
-    r = (uint8_t)(r * brightness);
-    g = (uint8_t)(g * brightness);
-    b = (uint8_t)(b * brightness);
-    return ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
-}
-
-void pattern_random(PIO pio, uint sm, uint len, uint t) {
-    if (t % 8)
-        return;
-    for (uint i = 0; i < len; ++i)
-        ws2812_put_pixel(static_cast<uint32_t>(rand()*0.1));
-    printf("pattern call\n");
-}
-
-void set_leds()
-{
-    float brightness = .25f;
-    short blue = 50;
-    short green = 180;
-    short red = 255;
-    struct RGB { short r, g, b; };
-    RGB leds[30];
-
-    for (int i = 0; i < WS2812_LEN; ++i)
-    {
-        //printf("%.2f\n", brightness);
-        //printf("%i: %i\n", i+1, blue);
-        ws2812_put_pixel(ws2812_rgb_scaled(red, green, blue, brightness));
-        leds[i] = {255,green,blue};
-        blue -= 2;
-        green -= 1;
-        if (blue < 0) blue = 0;
-    }
-
-    for (int i = 0; i < WS2812_LEN; ++i)
-    {
-        printf("%i: (%i, %i, %i)\n", i+1, leds[i].r, leds[i].g, leds[i].b);
-    }
-}
-
-void set_leds_to_one_color()
-{
-    float brightness = .1f;
-    for (int i = 0; i < WS2812_LEN; ++i)
-    {
-        ws2812_put_pixel(ws2812_rgb_scaled(255, 160, 10, brightness));
-    }
-    sleep_us(100);  // latch
-}
-
-void set_leds_form_MQTT()
-{
-    for (int i = 0; i < WS2812_LEN; ++i)
-    {
-        ws2812_put_pixel(led.ws2812_rgb_scaled());
-    }
-    sleep_us(100);  // latch
 }
 
 // MQTT
@@ -153,17 +88,6 @@ static volatile bool leds_dirty = false;
 static u8_t* rcv_data;
 static u16_t rcv_len;
 
-//static uint8_t led_r = 0, led_g = 0, led_b = 0;
-
-// MQTT incoming data callback
-static void mqtt_incoming_data_cb_print(void *arg, const u8_t *data, u16_t len, u8_t flags) {
-    // e.g. payload "255,0,128"
-    //sscanf((const char *)data, "%hhu,%hhu,%hhu", &led_r, &led_g, &led_b);
-    printf("%.*s\n", len, reinterpret_cast<const char*>(data));
-    rcv_data = const_cast<u8_t*>(data);
-    rcv_len = len;
-    leds_dirty = true;
-}
 // parse JSON to LED
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
     char buf[256];
@@ -205,7 +129,6 @@ int main()
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
-    // For more examples of I2C use see https://github.com/raspberrypi/pico-examples/tree/master/i2c
 
     // Enable wifi station
     cyw43_arch_enable_sta_mode();
@@ -280,29 +203,24 @@ int main()
     // Replace with your broker's IP
     IP4_ADDR(&broker_ip, 192, 168, 178, 100);
     mqtt_client = mqtt_client_new();
-    struct mqtt_connect_client_info_t ci = {};
+    mqtt_connect_client_info_t ci = {};
     ci.client_id = "pico_w";
-    // ci.client_user = "user";   // if auth required
-    // ci.client_pass = "pass";
     mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
-    // Wait a moment for connection (in a real app, do this in the callback)
     sleep_ms(2000);
     // Subscribe
     mqtt_subscribe(mqtt_client, "pico/leds", 0, NULL, NULL);
     mqtt_set_inpub_callback(mqtt_client, NULL, mqtt_incoming_data_cb, NULL);
 
     //set_leds();
-    set_leds_to_one_color();
+    led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
 
-    const char *payload = "hello from pico";
     uint32_t last_publish = 0;
     uint32_t last_read_bme = 0;
-    constexpr  uint32_t interval_publish = 10'000; // time between publishes in milliseconds
-    constexpr  uint32_t interval_read_bme = 2'000;
+    constexpr  uint32_t interval_publish = 15'000; // time between publishes in milliseconds
     static char payload_bme280[42];
     while (true)
     {
-        uint32_t now = to_ms_since_boot(get_absolute_time());
+        const uint32_t now = to_ms_since_boot(get_absolute_time());
 
         if (now - last_publish > interval_publish)
         {
@@ -334,32 +252,13 @@ int main()
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         }
 
-        if (now - last_read_bme > interval_read_bme)
-        {
-            last_read_bme = now;
-            bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
-            dev.delay_us(meas_delay_us, dev.intf_ptr);
-
-            bme280_data data;
-            rslt = bme280_get_sensor_data(BME280_ALL, &data, &dev);
-            if (rslt == BME280_OK) {
-                printf("Temp: %.2f °C  Humidity: %.2f %%  Pressure: %.2f hPa\n",
-                       data.temperature, data.humidity, data.pressure / 100.0);
-            } else {
-                printf("Read error: %d\n", rslt);
-            }
-            time_t clock = time(NULL) + TIMEZONE_OFFSET_SEC;
-            tm *t = localtime(&clock);
-            printf("%02d:%02d:%02d\n", t->tm_hour, t->tm_min, t->tm_sec);
-        }
-
         if (leds_dirty)
         {
-            mqtt_publish(mqtt_client, "pico/mirror",led.toString() , 128,
+            mqtt_publish(mqtt_client, "pico/mirror",led.toString() , 52,
                           0,    // QoS 0
                           0,    // not retained
                           mqtt_pub_request_cb, NULL);
-            set_leds_form_MQTT();
+            led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
             leds_dirty = false;
         }
 
