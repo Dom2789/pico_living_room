@@ -1,6 +1,4 @@
 #pragma once
-#include <string>
-
 #include "pico/binary_info/code.h"
 
 class LED {
