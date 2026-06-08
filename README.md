@@ -1,4 +1,5 @@
 # example telegrams:
+{"brightness": 30, "red": 0, "green": 48, "blue": 14}
 
 dark powder blue
 {"brightness": 200, "red": 0, "green": 48, "blue": 143}
