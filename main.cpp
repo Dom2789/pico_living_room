@@ -12,12 +12,17 @@
 #include "exlibs/bme280.h"
 #include "lwip/apps/sntp.h"
 #include <sys/time.h>
+
+#include "MQTT.h"
 #include "exlibs/bme280.h"
 
 // I2C defines
 #define I2C_PORT i2c0
 #define I2C_SDA 20
 #define I2C_SCL 21
+
+//MQTT
+static MQTT *mqtt = nullptr; // create variable for global accessibility
 
 // sntp
 constexpr int TIMEZONE_OFFSET_SEC = 2 * 3600;  // UTC+2 for Germany
@@ -36,49 +41,9 @@ static LED led(255, 160, 10, 0.2);
 static PIO ws2812_pio = pio0;
 static uint ws2812_sm = 0;
 
-static void ws2812_put_pixel(uint32_t grb) {
+static void ws2812_put_pixel(uint32_t grb)
+{
     pio_sm_put_blocking(ws2812_pio, ws2812_sm, grb << 8u);
-}
-
-// MQTT
-static mqtt_client_t *mqtt_client;
-
-static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
-    if (status == MQTT_CONNECT_ACCEPTED) {
-        printf("MQTT connected\n");
-    } else {
-        printf("MQTT connection failed: %d\n", status);
-    }
-}
-
-static void mqtt_pub_request_cb(void *arg, err_t result) {
-    if (result == ERR_OK) {
-        printf("Publish successful\n");
-    }
-}
-
-static volatile bool leds_dirty = false;
-static u8_t* rcv_data;
-static u16_t rcv_len;
-
-// parse JSON to LED
-static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
-    char buf[256];
-    memcpy(buf, data, len);
-    buf[len] = '\0';
-
-    cJSON *json = cJSON_Parse(buf);
-    if (json) {
-        led.setRed(cJSON_GetObjectItem(json, "red")->valueint);
-        led.setGreen(cJSON_GetObjectItem(json, "green")->valueint);
-        led.setBlue(cJSON_GetObjectItem(json, "blue")->valueint);
-        led.setBrightness(cJSON_GetObjectItem(json, "brightness")->valueint / 255.0f);
-        // parse "mode" similarly
-        cJSON_Delete(json);
-        rcv_data = const_cast<u8_t*>(data);
-        rcv_len = len;
-        leds_dirty = true;
-    }
 }
 
 //BME280
@@ -145,6 +110,7 @@ int sensor_init()
     printf("BME280 ready\n");
     return 0;
 }
+
 // WIFI
 static int connect_to_WIFI()
 {
@@ -209,17 +175,10 @@ int main()
         sntp_setservername(0, "pool.ntp.org");
         sntp_init();
         sleep_ms(2000);  // wait for sync
-        // MQTT connection to broker
-        ip_addr_t broker_ip;
-        IP4_ADDR(&broker_ip, 192, 168, 178, 100);
-        mqtt_client = mqtt_client_new();
-        mqtt_connect_client_info_t ci = {};
-        ci.client_id = "pico_w";
-        mqtt_client_connect(mqtt_client, &broker_ip, 1883, mqtt_connection_cb, NULL, &ci);
-        sleep_ms(2000);
-        // Subscribe
-        mqtt_subscribe(mqtt_client, "led/living/1", 0, NULL, NULL);
-        mqtt_set_inpub_callback(mqtt_client, NULL, mqtt_incoming_data_cb, NULL);
+        // create mqtt-instance and link to global pointer
+        static MQTT mqtt_instance;
+        mqtt = &mqtt_instance;
+        if (mqtt->is_connected()) mqtt->sub_to_led_topic();
     }
 
     // super loop
@@ -248,10 +207,11 @@ int main()
                 snprintf(payload_bme280, sizeof(payload_bme280),"[%02d:%02d:%02d] [%.2fC] [%.2fhPa] [%.2f%%]",
                        t->tm_hour, t->tm_min, t->tm_sec, data.temperature, data.pressure / 100.0, data.humidity);
 
-                mqtt_publish(mqtt_client, "climate/living/1", payload_bme280, strlen(payload_bme280),
-                             0,    // QoS 0
-                             0,    // not retained
-                             mqtt_pub_request_cb, NULL);
+                if (mqtt != nullptr && mqtt->is_connected())
+                {
+                    mqtt->publish("climate/living/1", payload_bme280, strlen(payload_bme280));
+                }
+
                 printf("%s\n",payload_bme280);
             } else {
                 printf("Read error: %d\n", rslt);
@@ -261,14 +221,13 @@ int main()
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         }
 
-        if (leds_dirty)
+        if (mqtt != nullptr && mqtt-> new_data())
         {
-            mqtt_publish(mqtt_client, "led/living/mirror",led.toString() , 52,
-                          0,    // QoS 0
-                          0,    // not retained
-                          mqtt_pub_request_cb, NULL);
+            mqtt->publish("led/living/mirror",led.to_string() , 52);
+            auto [r,g,b,brightness] = mqtt->get_led_values();
+            led.set_led_values(r, g, b, brightness);
             led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
-            leds_dirty = false;
+            mqtt->clear_flag_new_data();
         }
 
     }

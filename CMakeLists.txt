@@ -40,7 +40,8 @@ add_executable(MqttBme280 main.cpp
                 exlibs/cJSON.c
                 LED.h
                 exlibs/bme280.c
-                MQTT.cpp.h)
+                MQTT.h
+)
 
 pico_generate_pio_header(MqttBme280 ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
