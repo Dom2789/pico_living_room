@@ -63,10 +63,11 @@ public:
         }
     }
 
-    void sub_to_led_topic()
+    void sub_to_led_topic(void* arg = nullptr)
     {
         mqtt_subscribe(_client, "led/living/1", 0, NULL, NULL);
-        mqtt_set_inpub_callback(_client, NULL, parse_JSON_data_cb, NULL);
+        mqtt_set_inpub_callback(_client, NULL, parse_JSON_data_cb, arg);
+        printf("subscribed to topic 'led/living/1'\n");
     }
 
     [[nodiscard]] std::tuple<int, int, int, float> get_led_values() const

@@ -178,7 +178,7 @@ int main()
         // create mqtt-instance and link to global pointer
         static MQTT mqtt_instance;
         mqtt = &mqtt_instance;
-        if (mqtt->is_connected()) mqtt->sub_to_led_topic();
+        if (mqtt->is_connected()) mqtt->sub_to_led_topic(mqtt);
     }
 
     // super loop
@@ -223,10 +223,10 @@ int main()
 
         if (mqtt != nullptr && mqtt-> new_data())
         {
-            mqtt->publish("led/living/mirror",led.to_string() , 52);
             auto [r,g,b,brightness] = mqtt->get_led_values();
             led.set_led_values(r, g, b, brightness);
             led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
+            mqtt->publish("led/living/mirror",led.to_string() , strlen(led.to_string()));
             mqtt->clear_flag_new_data();
         }
 
