@@ -42,7 +42,7 @@ public:
         }
     }
 
-    static void parse_JSON_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
+    static void parse_JSON_data_cb(void *arg, const u8_t *data, u16_t len, uint8_t flags)
     {
         char buf[256];
         memcpy(buf, data, len);
@@ -63,11 +63,63 @@ public:
         }
     }
 
+    static void parse_light_cmd(void *arg, const u8_t *data, u16_t len,  uint8_t flags)
+    {
+        char buf[256];
+        memcpy(buf, data, len);
+        buf[len] = '\0';
+        // can't use 'this' here — but you can pass the instance via arg:
+        MQTT *self = static_cast<MQTT*>(arg);
+
+        cJSON *root = cJSON_Parse(buf);
+        if (!root) {
+            // parse error — cJSON_GetErrorPtr() shows where
+            return;
+        }
+
+        // "state": "ON" or "OFF"
+        cJSON *state = cJSON_GetObjectItemCaseSensitive(root, "state");
+        if (cJSON_IsString(state) && state->valuestring) {
+            bool off = (strcmp(state->valuestring, "OFF") == 0);
+            if (off)
+            {
+                self->_received_color.r =0;
+                self->_received_color.g =0;
+                self->_received_color.b =0;
+                cJSON_Delete(root);
+                self->_received_new_color = true;
+                return;
+            }
+        }
+
+        cJSON *brightness = cJSON_GetObjectItemCaseSensitive(root, "brightness");
+        if (cJSON_IsNumber(brightness)) {
+            self->_received_color.brightness = static_cast<float>(brightness->valueint)/255.0f;       // 0..255
+        }
+
+        // "color": { "r":..,"g":..,"b":.. }
+        cJSON *color = cJSON_GetObjectItemCaseSensitive(root, "color");
+        if (cJSON_IsObject(color)) {
+            cJSON *r = cJSON_GetObjectItemCaseSensitive(color, "r");
+            cJSON *g = cJSON_GetObjectItemCaseSensitive(color, "g");
+            cJSON *b = cJSON_GetObjectItemCaseSensitive(color, "b");
+            if (cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)) {
+                self->_received_color.r = (uint8_t)r->valueint;
+                self->_received_color.g = (uint8_t)g->valueint;
+                self->_received_color.b = (uint8_t)b->valueint;
+            }
+        }
+
+        cJSON_Delete(root);
+        self->_received_new_color = true;
+    }
+
+
     void sub_to_led_topic(void* arg = nullptr)
     {
-        mqtt_subscribe(_client, "led/living/1", 0, NULL, NULL);
-        mqtt_set_inpub_callback(_client, NULL, parse_JSON_data_cb, arg);
-        printf("subscribed to topic 'led/living/1'\n");
+        mqtt_subscribe(_client, "led/living/1/set", 0, NULL, NULL);
+        mqtt_set_inpub_callback(_client, NULL, parse_light_cmd, arg);
+        printf("subscribed to topic 'led/living/1/set'\n");
     }
 
     [[nodiscard]] std::tuple<int, int, int, float> get_led_values() const
