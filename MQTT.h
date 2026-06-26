@@ -28,6 +28,14 @@ public:
 
     void clear_flag_new_data() {_received_new_color = false;}
 
+    void set_new_color(const int red, const int green, const int blue)
+    {
+        _received_new_color = true;
+        _received_color.r = red;
+        _received_color.g = green;
+        _received_color.b = blue;
+    }
+
     static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
         if (status == MQTT_CONNECT_ACCEPTED) {
             printf("MQTT connected\n");
@@ -94,6 +102,7 @@ public:
 
         cJSON *brightness = cJSON_GetObjectItemCaseSensitive(root, "brightness");
         if (cJSON_IsNumber(brightness)) {
+            printf("%f\n",static_cast<float>(brightness->valueint));
             self->_received_color.brightness = static_cast<float>(brightness->valueint)/255.0f;       // 0..255
         }
 
@@ -113,7 +122,6 @@ public:
         cJSON_Delete(root);
         self->_received_new_color = true;
     }
-
 
     void sub_to_led_topic(void* arg = nullptr)
     {
@@ -142,10 +150,9 @@ private:
     mqtt_connect_client_info_t _ci = {};
     bool _received_new_color = false;
     bool _connected = false;
-    Color _received_color = {0,0,0,0.0};
+    Color _received_color = {0,0,0,0.2}; // sea green
     u8_t* _rcv_color_raw;
     u16_t _rcv_color_raw_len;
-
 
 };
 #endif //MQTTBME280_MQTT_CPP_H

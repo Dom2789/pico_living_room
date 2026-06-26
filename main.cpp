@@ -35,8 +35,12 @@ void sntp_set_system_time(unsigned int sec) {
 constexpr bool WS2812_IS_RGBW = false;
 constexpr uint WS2812_PIN = 0;
 constexpr uint WS2812_LEN = 30;
+// sea green
+constexpr uint initial_red = 59;
+constexpr uint initial_green = 122;
+constexpr uint initial_blue = 87;
 
-static LED led(255, 160, 10, 0.2);
+static LED led(initial_red, initial_green, initial_blue, 0.2);
 
 static PIO ws2812_pio = pio0;
 static uint ws2812_sm = 0;
@@ -178,7 +182,12 @@ int main()
         // create mqtt-instance and link to global pointer
         static MQTT mqtt_instance;
         mqtt = &mqtt_instance;
-        if (mqtt->is_connected()) mqtt->sub_to_led_topic(mqtt);
+        if (mqtt->is_connected())
+        {
+            // send initial state to home assistant
+            mqtt->set_new_color(initial_red, initial_green, initial_blue);
+            mqtt->sub_to_led_topic(mqtt);
+        }
     }
 
     // super loop
@@ -226,7 +235,7 @@ int main()
             auto [r,g,b,brightness] = mqtt->get_led_values();
             led.set_led_values(r, g, b, brightness);
             led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
-            mqtt->publish("led/living/mirror",led.to_string() , strlen(led.to_string()));
+            mqtt->publish("led/living/1/state",led.to_mqtt_json() , strlen(led.to_mqtt_json()));
             mqtt->clear_flag_new_data();
         }
 

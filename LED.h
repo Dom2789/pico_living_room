@@ -53,6 +53,27 @@ public:
         return buf;
     }
 
+    const char* to_mqtt_json(const char* color_mode = "rgb") const
+    {
+        static char buf[96];
+        if (_red == 0 && _green == 0 && _blue == 0)
+        {
+            snprintf(buf, sizeof(buf), "{\"state\":\"OFF\"}");
+        } else
+        {
+            snprintf(buf, sizeof(buf),
+                "{\"state\":\"%s\",\"brightness\":%u,"
+                "\"color\":{\"r\":%u,\"g\":%u,\"b\":%u},"
+                "\"color_mode\":\"%s\"}",
+                "ON",
+                static_cast<unsigned>(_brightness * 255.0f + 0.5f),  // float → 0..255
+                _red, _green, _blue,
+                color_mode);
+        }
+
+        return buf;
+    }
+
     uint32_t ws2812_rgb_scaled() {
         const uint8_t  r = (uint8_t)(_red * _brightness);
         const uint8_t  g = (uint8_t)(_green * _brightness);
