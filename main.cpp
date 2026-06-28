@@ -11,8 +11,6 @@
 #include "pico/time.h"
 #include "exlibs/bme280.h"
 #include "lwip/apps/sntp.h"
-#include <sys/time.h>
-
 #include "MQTT.h"
 #include "exlibs/bme280.h"
 
@@ -23,13 +21,6 @@
 
 //MQTT
 static MQTT *mqtt = nullptr; // create variable for global accessibility
-
-// sntp
-constexpr int TIMEZONE_OFFSET_SEC = 2 * 3600;  // UTC+2 for Germany
-void sntp_set_system_time(unsigned int sec) {
-    const timeval tv = { .tv_sec = sec, .tv_usec = 0 };
-    settimeofday(&tv, NULL);
-}
 
 // WS2812 constants
 constexpr bool WS2812_IS_RGBW = false;
@@ -174,11 +165,6 @@ int main()
     bool WIFI_is_connected = not(connect_to_WIFI());
     if (WIFI_is_connected)
     {
-        // sync with timeserver
-        sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        sntp_setservername(0, "pool.ntp.org");
-        sntp_init();
-        sleep_ms(2000);  // wait for sync
         // create mqtt-instance and link to global pointer
         static MQTT mqtt_instance;
         mqtt = &mqtt_instance;
@@ -193,7 +179,7 @@ int main()
     // super loop
     uint32_t last_publish = 0;
     constexpr  uint32_t interval_publish = 15'000; // time between publishes in milliseconds
-    static char payload_bme280[42];
+    static char payload_bme280[60];
 
     while (true)
     {
@@ -205,20 +191,18 @@ int main()
 
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
 
-            time_t clock = time(NULL)+ TIMEZONE_OFFSET_SEC;
-            tm *t = localtime(&clock);
-
             bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev);
             dev.delay_us(meas_delay_us, dev.intf_ptr);
             bme280_data data;
             int8_t rslt = bme280_get_sensor_data(BME280_ALL, &data, &dev);
             if (rslt == BME280_OK) {
-                snprintf(payload_bme280, sizeof(payload_bme280),"[%02d:%02d:%02d] [%.2fC] [%.2fhPa] [%.2f%%]",
-                       t->tm_hour, t->tm_min, t->tm_sec, data.temperature, data.pressure / 100.0, data.humidity);
+                snprintf(payload_bme280, sizeof(payload_bme280),
+                        "{\"temp\":%.2f,\"pressure\":%.2f,\"humidity\":%.2f}",
+                        data.temperature, data.pressure / 100.0, data.humidity);
 
                 if (mqtt != nullptr && mqtt->is_connected())
                 {
-                    mqtt->publish("climate/living/1", payload_bme280, strlen(payload_bme280));
+                    mqtt->publish_retain("climate/living/1", payload_bme280, strlen(payload_bme280));
                 }
 
                 printf("%s\n",payload_bme280);

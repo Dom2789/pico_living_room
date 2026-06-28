@@ -143,6 +143,14 @@ public:
               mqtt_pub_request_cb, NULL);
     }
 
+    void publish_retain(const char* topic, const char* payload, short unsigned int payload_len)
+    {
+        mqtt_publish(_client, topic, payload, payload_len,
+              0,    // QoS 0
+              1,    // retained
+              mqtt_pub_request_cb, NULL);
+    }
+
 private:
     short unsigned int _port = 1883;
     ip_addr_t _broker_ip;
