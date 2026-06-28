@@ -219,7 +219,7 @@ int main()
             auto [r,g,b,brightness] = mqtt->get_led_values();
             led.set_led_values(r, g, b, brightness);
             led.set_leds_form_MQTT(WS2812_LEN, ws2812_put_pixel);
-            mqtt->publish("led/living/1/state",led.to_mqtt_json() , strlen(led.to_mqtt_json()));
+            mqtt->publish_retain("led/living/1/state",led.to_mqtt_json() , strlen(led.to_mqtt_json()));
             mqtt->clear_flag_new_data();
         }
 
