@@ -14,7 +14,7 @@ public:
     // constructor handles connection to broker
     MQTT()
     {
-        IP4_ADDR(&_broker_ip, 192, 168, 178, 100);
+        IP4_ADDR(&_broker_ip, 192, 168, 1, 42);
         _client = mqtt_client_new();
         _ci.client_id = "pico_w";
         err_t err =  mqtt_client_connect(_client, &_broker_ip, _port, mqtt_connection_cb, NULL, &_ci);
